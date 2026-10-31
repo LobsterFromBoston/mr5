@@ -1,7 +1,6 @@
 a twisted server roller that uses readprocessmemory to read thermodynamics
 what is broken?
-- attributes (day 2 day 3 wind speeds and storm motion)
-- crashing
+- none, fixed everything
 other info:
 i use ai because vibecoding
 codebase is absolute shit
