@@ -1,11 +1,20 @@
-a twisted server roller that uses readprocessmemory to read thermodynamics
-what is broken?
+# twisted roller
+
+a twisted server roller that uses `ReadProcessMemory` to read thermodynamics
+
+## what is broken?
+
 - none, fixed everything
-other info:
-i use ai because vibecoding
-codebase is absolute shit
+
+## other info
+
+- i use ai because vibecoding
+- codebase is absolute shit
 
 you might be disappointed seeing my code
-credit to stackz (@stackzeu) for the instance and memory manager
-credit to norfolk for doing nothing
-credit to me for making this
+
+## credits
+
+- stackz ([@stackzeu](https://youtube.com/@stackzeu)) for the instance and memory manager
+- norfolk for doing nothing
+- me for making this
