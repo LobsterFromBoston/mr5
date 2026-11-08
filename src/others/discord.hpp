@@ -44,7 +44,7 @@ public:
         InternetCloseHandle(hSession);
     }
 
-    static void post_roll(const Config& cfg, results& data, int rerolls, const std::string& username, const std::string& full_link) {
+    static void post_roll(const Config& cfg, results& data, int rerolls, const std::string& username, const std::string& full_link, const std::string& weather = "") {
         if (cfg.webhook.empty()) return;
 
         auto get_str = [&](const std::string& key) -> std::string {
@@ -77,11 +77,20 @@ public:
             body = "<@&" + cfg.roleid + ">\\n";
         }
         body += "found server\\n";
+        if (cfg.version == "1.19") {
+            if (weather == "overcast")
+                body += "\\u26a0\\ufe0f THIS SERVER IS OVERCAST \\u26a0\\ufe0f\\n";
+            else if (weather == "partly")
+                body += "\\ud83c\\udf24\\ufe0f THIS SERVER IS PARTLY \\ud83c\\udf24\\ufe0f\\n";
+            else if (weather == "clear")
+                body += "\\u2600\\ufe0f THIS SERVER IS CLEAR \\u2600\\ufe0f\\n";
+        }
+
         body += "attempt: " + std::to_string(rerolls + 1) + " (" + std::to_string(rerolls) + " rerolls)" "\\n";
         body += "rolled by: " + username + "\\n";
 
         if (cfg.version == "1.19") {
-            body += "```yaml\\n";
+            body += "```pl\\n";
             body += "VERSION: TWISTED-1-19-1\\n";
             body += "D1: " + get_str("risk_d1") + ", D2: " + get_str("risk_d2") + ", D3: " + get_str("risk_d3") + "\\n\\n";
             body += "FORECASTED:\\n";
@@ -100,7 +109,7 @@ public:
         }
         else if (cfg.version == "1.18")
         {
-            body += "```yaml\\n";
+            body += "```pl\\n";
             body += "VERSION: TWISTED-1-18-1\\n";
             body += "CURRENT RISK: " + get_str("risk") + "\\n\\n";
             body += "FORECASTED:\\n";
@@ -118,7 +127,7 @@ public:
             body += "```\\n";
         }
         else {
-            body += "```yaml\\n";
+            body += "```pl\\n";
             body += "VERSION: " + (cfg.version == "1.20" ? std::string("TWISTED-1-20-1") : std::string("TWISTED-MAIN")) + "\\n";
             body += "D1: " + get_str("risk_d1") + " D2: " + get_str("risk_d2") + " D3: " + get_str("risk_d3") + "\\n\\n";
             body += "COMPOSITES:\\n";

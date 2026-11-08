@@ -1,9 +1,66 @@
 #pragma once
+#include <string_view>
+#include <type_traits>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 #include <string>
 #include "../mem/memory.h"
 #include "offsets.hpp"
+#include "math.h"
+
+namespace attr_detail {
+	inline bool plausible_ptr(uint64_t p) {
+		return p > 0x10000 && p < 0x00007FFFFFFFFFFF;
+	}
+
+	inline bool plausible_key(const std::string& s) {
+		if (s.empty() || s.size() > 128) return false;
+		for (unsigned char c : s)
+			if (c < 0x20 || c > 0x7E) return false;
+		return true;
+	}
+
+	inline uint64_t find_record(uint64_t instance, std::string_view wanted, bool verbose = false) {
+		uint64_t componentMap = memory->read<uint64_t>(instance + Offsets::Instance::ComponentMap);
+		if (!plausible_ptr(componentMap)) return 0;
+
+		uint64_t start = memory->read<uint64_t>(componentMap);
+		uint64_t end = memory->read<uint64_t>(componentMap + 0x8);
+		if (!plausible_ptr(start) || end <= start || (end - start) > 0x4000) return 0;
+
+		for (uint64_t slot = start; slot < end; slot += Offsets::AttributesMap::ComponentEntrySize) {
+			uint64_t entry = memory->read<uint64_t>(slot);
+			if (!plausible_ptr(entry)) continue;
+
+			uint64_t listing = memory->read<uint64_t>(entry + Offsets::AttributesMap::Attributes);
+			uint32_t count = memory->read<uint32_t>(entry + Offsets::AttributesMap::Length);
+			if (!plausible_ptr(listing) || count == 0 || count > 512) continue;
+
+			uint64_t firstKey = memory->read<uint64_t>(listing + Offsets::Attribute::Key);
+			if (!plausible_ptr(firstKey)) continue;
+			if (!plausible_key(memory->read_string(firstKey + Offsets::Attribute::KeyString))) continue;
+
+			if (verbose) {
+				uint32_t tag = memory->read<uint32_t>(slot + Offsets::AttributesMap::ComponentTagOffset);
+				printf("[attr] attribute entry found, tag=0x%x count=%u\n", tag, count);
+			}
+
+			for (uint32_t i = 0; i < count; i++) {
+				uint64_t record = listing + (uint64_t)i * Offsets::Attribute::Size;
+				uint64_t keyPtr = memory->read<uint64_t>(record + Offsets::Attribute::Key);
+				if (!plausible_ptr(keyPtr)) continue;
+
+				std::string key = memory->read_string(keyPtr + Offsets::Attribute::KeyString);
+				if (!plausible_key(key)) continue;
+
+				if (verbose) printf("[attr]   #%u key='%s'\n", i, key.c_str());
+				if (key == wanted) return record;
+			}
+		}
+		return 0;
+	}
+}
 
 namespace rbx
 {
@@ -33,30 +90,13 @@ namespace rbx
 		template<typename T>
 		T get_attribute(std::string_view name_to_search)
 		{
-			uint64_t component = memory->read<uint64_t>(this->address + Offsets::Instance::ComponentMap);
-			if (!component) return T{};
+			static_assert(std::is_trivially_copyable_v<T>,
+				"use the std::string specialization for strings");
 
-			uint64_t start = memory->read<uint64_t>(component);
-			uint64_t end = memory->read<uint64_t>(component + 8);
-			if (!start || !end || end <= start) return T{};
+			uint64_t record = attr_detail::find_record(this->address, name_to_search);
+			if (!record) return T{};
 
-			for (uint64_t index = 0; index < end - start; index += 0x10) {
-				uint64_t entry = memory->read<uint64_t>(start + index);
-				if (!entry) continue;
-
-				uint64_t listing = memory->read<uint64_t>(entry + 0x10);
-				if (!listing) continue;
-
-				for (int step = 0; step < Offsets::Attribute::Size * 32; step += Offsets::Attribute::Size) {
-					uint64_t nameptr = memory->read<uint64_t>(listing + step + Offsets::Attribute::Key);
-					if (!nameptr) break;
-
-					if (memory->read_string(nameptr) == name_to_search) {
-						return memory->read<T>(listing + step + Offsets::Attribute::Value);
-					}
-				}
-			}
-			return T{};
+			return memory->read<T>(record + Offsets::Attribute::Value);
 		}
 	};
 
@@ -93,57 +133,12 @@ std::vector<T> rbx::interface_t::get_children()
 	return children;
 }
 
-//template<>
-//inline std::string rbx::nameable_t::get_attribute<std::string>(std::string_view name_to_search)
-//{
-//	uint64_t AttributeList1 = memory->read<uint64_t>(this->address + Offsets::Instance::AttributeContainer);
-//	uint64_t AttributeList = memory->read<uint64_t>(AttributeList1 + Offsets::Instance::AttributeList);
-//
-//	for (int i = 0x0; i < 0x1000; i += Offsets::Instance::AttributeToNext)
-//	{
-//		std::string Name = memory->read_string(memory->read<uint64_t>(AttributeList + i));
-//
-//		if (Name == name_to_search)
-//		{
-//			return memory->read_string(AttributeList + i + Offsets::Instance::AttributeToValue);
-//		}
-//	}
-//
-//	return "";
-//}
-
 template<>
-inline std::string rbx::nameable_t::get_attribute<std::string>(std::string_view name_to_search)
-{
-	uint64_t component = memory->read<uint64_t>(this->address + Offsets::Instance::ComponentMap);
-	if (!component)
-		return "unknown";
-	uint64_t start = memory->read<uint64_t>(component);
-	uint64_t end = memory->read<uint64_t>(component + 8);
-	if (!start || !end || end <= start)
-		return "unknown";
-	for (uint64_t index = 0; index < end - start; index += 0x10) {
-		uint64_t entry = memory->read<uint64_t>(start + index);
-		if (!entry)
-			continue;
-		uint64_t listing = memory->read<uint64_t>(entry += 0x10);
-		if (!listing)
-			continue;
-		for (int step = 0; step < Offsets::Attribute::Size * 32; step += Offsets::Attribute::Size) {
-			uint64_t nameptr = memory->read<uint64_t>(listing + step + Offsets::Attribute::Key);
-			if (!nameptr)
-				break;
-			std::string name = memory->read_string(nameptr);
-			if (name.empty() || name.length() > 128)
-				break;
-			if (name == name_to_search) {
-				uint64_t valueaddr = listing + step + Offsets::Attribute::Value;
-				return memory->read_string(valueaddr);
-			}
-		}
-	}
-	return "unknown";
+inline std::string rbx::nameable_t::get_attribute<std::string>(std::string_view name) {
+	uint64_t record = attr_detail::find_record(this->address, name, /*verbose*/ true);
+	if (!record) return "unknown";
+	return memory->read_string(record + Offsets::Attribute::Value);
 }
-	
+
 
 rbx::instance_t resolve(rbx::instance_t root, const std::vector<std::string>& path);

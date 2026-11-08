@@ -19,7 +19,7 @@ std::string rbx::nameable_t::get_string_value()
 
 std::string rbx::nameable_t::get_name()
 {
-	std::uint64_t nameptr = memory->read<uint64_t>(this->address + Offsets::Instance::Name);
+	std::uint64_t nameptr = memory->read<uint64_t>(this->address + Offsets::Instance::NameContainer);
 	if (nameptr)
 	{
 		return memory->read_string(nameptr);

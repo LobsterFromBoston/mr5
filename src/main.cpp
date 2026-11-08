@@ -363,13 +363,51 @@ int main()
 					prev.srh = get_double("srh");
 					prev.cape = (cfg.version == "1.18" || cfg.version == "1.19") ? get_double("fcape") : get_double("cape");
 
+					// overcast check
+					std::string cloud_state = "";
+
+					if (cfg.version == "1.19") {
+						struct vector3 final
+						{
+							float x{ 0.f }, y{ 0.f }, z{ 0.f };
+						};
+
+						float maxsize = 0.f;
+
+						for (int i = 0; i < 5; i++) {
+							if (!process::is_running("RobloxPlayerBeta.exe")) break;
+
+							printf("\rchecking clouds... (%d/5)   ", i + 1);
+							std::fflush(stdout);
+
+							rbx::instance_t clouds = resolve(realdm, { "Workspace", "storm_related", "clouds" });
+
+							if (clouds.address != 0) {
+								for (auto& part : clouds.get_children()) {
+									rbx::instance_t mesh = part.find_first_child_of_class("SpecialMesh");
+									if (mesh.address == 0) continue;
+
+									auto scale = memory->read<vector3>(mesh.address + Offsets::SpecialMesh::Scale);
+									if (scale.x > maxsize) maxsize = scale.x;
+								}
+							}
+
+							if (maxsize >= 30000) break;
+
+							std::this_thread::sleep_for(std::chrono::seconds(1));
+						}
+
+						printf("\n");
+						cloud_state = maxsize >= 30000 ? "overcast" : maxsize >= 10000 ? "partly" : "clear";
+					}
+
 					std::uint64_t players_service = resolve(realdm, { "Players" }).address;
 					std::uint64_t local_player = memory->read<std::uint64_t>(players_service + Offsets::Player::LocalPlayer);
-					std::uint64_t name_ptr = memory->read<std::uint64_t>(local_player + Offsets::Instance::Name);
+					std::uint64_t name_ptr = memory->read<std::uint64_t>(local_player + Offsets::Instance::NameContainer);
 					std::string roblox_username = memory->read_string(name_ptr);
 					std::string full_link = cfg.raw_links[rerolls % cfg.raw_links.size()];
 
-					Discord::post_roll(cfg, weather_data, rerolls, roblox_username, full_link);
+					Discord::post_roll(cfg, weather_data, rerolls, roblox_username, full_link, cloud_state);
 
 					auto success_start = std::chrono::steady_clock::now();
 					while (process::is_running("RobloxPlayerBeta.exe")) {
